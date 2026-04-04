@@ -5,60 +5,212 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  id-token: write
-  contents: read
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   AWS_REGION: __AWS_REGION__
   AWS_ACCOUNT_ID: __AWS_ACCOUNT_ID__
   APP_NAME: __APP_HOSTNAME__
   ECR_REPO: __APP_HOSTNAME__
+  ECS_CLUSTER: __APP_HOSTNAME__
+  ECS_SERVICE: __APP_HOSTNAME__-api
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+  # ---------------------------------------------------------------------------
+  # Stage 1: Validate
+  # ---------------------------------------------------------------------------
+  validate:
+    runs-on:
+      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.5'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-ApexResearchAgent
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init & Validate
+        working-directory: infrastructure
+        run: |
+          terraform init
+          terraform validate
+
+      - name: Check for non-ASCII characters in Terraform
+        run: |
+          MATCHES=$(grep -rPn '[^\x00-\x7F]' infrastructure/ --include='*.tf' | grep -Pv ':\d+:\s*#' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "ERROR: Non-ASCII characters found:"
+            echo "$MATCHES"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: Build and push backend Docker image
+  # ---------------------------------------------------------------------------
+  build-backend:
+    needs: validate
+    runs-on:
+      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-Deploy
-          aws-region: __AWS_REGION__
+          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-ApexResearchAgent
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push backend
-        working-directory: backend
+      - name: Build and push backend image
         run: |
-          docker build --platform linux/amd64 -t $ECR_REPO .
-          docker tag $ECR_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
-          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+          docker build --platform linux/amd64 \
+            -f backend/Dockerfile \
+            -t ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:latest \
+            -t ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ github.sha }} \
+            backend/
+          docker push ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }} --all-tags
 
-      - name: Update ECS service
+  # ---------------------------------------------------------------------------
+  # Stage 3: Apply Terraform (infrastructure changes)
+  # ---------------------------------------------------------------------------
+  deploy-infrastructure:
+    needs: [validate, build-backend]
+    runs-on:
+      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.5'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-ApexResearchAgent
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: infrastructure
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: infrastructure
+        run: |
+          terraform apply -auto-approve \
+            -var="backend_image=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ github.sha }}"
+
+  # ---------------------------------------------------------------------------
+  # Stage 4a: Deploy backend (force new ECS deployment)
+  # ---------------------------------------------------------------------------
+  deploy-backend:
+    needs: deploy-infrastructure
+    runs-on:
+      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-ApexResearchAgent
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy backend to ECS
         run: |
           aws ecs update-service \
-            --cluster $APP_NAME \
-            --service $APP_NAME-api \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
             --force-new-deployment
+
+          echo "Waiting for ECS service to stabilize (up to 10 minutes)..."
+          TIMEOUT=600
+          ELAPSED=0
+          INTERVAL=15
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            DEPLOY_STATUS=$(aws ecs describe-services \
+              --cluster $ECS_CLUSTER \
+              --services $ECS_SERVICE \
+              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
+              --output text)
+            echo "Primary deployment: $DEPLOY_STATUS (${ELAPSED}s)"
+            if [ "$DEPLOY_STATUS" = "COMPLETED" ]; then
+              echo "Service stabilized."
+              break
+            fi
+            if [ "$DEPLOY_STATUS" = "FAILED" ]; then
+              echo "Deployment failed."
+              exit 1
+            fi
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "Timed out after ${TIMEOUT}s."
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 4b: Build and deploy frontend to S3 + CloudFront
+  # ---------------------------------------------------------------------------
+  deploy-frontend:
+    needs: deploy-infrastructure
+    runs-on:
+      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          rm -f ~/.npmrc
+          echo "registry=https://registry.npmjs.org/" > .npmrc
+          cd frontend
+          npm install --no-workspaces --registry=https://registry.npmjs.org
 
       - name: Build frontend
         working-directory: frontend
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
 
-      - name: Deploy frontend to S3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-ApexResearchAgent
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to S3
         run: |
-          aws s3 sync frontend/dist/ s3://$APP_NAME-frontend/ --delete
+          aws s3 sync frontend/dist/ s3://${{ env.APP_NAME }}-frontend --delete
 
       - name: Invalidate CloudFront
         run: |
           DIST_ID=$(aws cloudfront list-distributions \
             --query "DistributionList.Items[?contains(Aliases.Items, '${{ env.APP_NAME }}')].Id | [0]" \
             --output text)
-          if [ "$DIST_ID" != "None" ]; then
-            aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
+          if [ "$DIST_ID" != "None" ] && [ -n "$DIST_ID" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id $DIST_ID \
+              --paths "/*"
+          else
+            echo "No CloudFront distribution found for ${{ env.APP_NAME }} — skipping invalidation"
           fi
