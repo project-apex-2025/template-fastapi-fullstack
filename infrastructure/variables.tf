@@ -26,12 +26,13 @@ variable "cognito_user_pool_id" {
   default = "__COGNITO_POOL_ID__"
 }
 
-variable "cognito_client_id" {
-  default = "__COGNITO_CLIENT_ID__"
-}
-
 variable "cognito_domain" {
   default = "__COGNITO_DOMAIN__"
+}
+
+variable "backend_image" {
+  description = "Backend Docker image URI (set by CI/CD)"
+  default     = ""
 }
 
 locals {
