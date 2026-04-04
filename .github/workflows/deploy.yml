@@ -27,7 +27,7 @@ jobs:
   # ---------------------------------------------------------------------------
   validate:
     runs-on:
-      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - codebuild-project-apex-2025-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,7 +63,7 @@ jobs:
   build-backend:
     needs: validate
     runs-on:
-      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - codebuild-project-apex-2025-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
@@ -91,7 +91,7 @@ jobs:
   deploy-infrastructure:
     needs: [validate, build-backend]
     runs-on:
-      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - codebuild-project-apex-2025-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
@@ -122,7 +122,7 @@ jobs:
   deploy-backend:
     needs: deploy-infrastructure
     runs-on:
-      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - codebuild-project-apex-2025-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
@@ -172,7 +172,7 @@ jobs:
   deploy-frontend:
     needs: deploy-infrastructure
     runs-on:
-      - codebuild-project-apex-platform-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - codebuild-project-apex-2025-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
 
