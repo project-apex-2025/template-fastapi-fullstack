@@ -1,0 +1,17 @@
+{
+  "name": "FastAPI Full-Stack (Fargate + ALB)",
+  "description": "React + FastAPI on ECS Fargate behind ALB. Cognito auth, CloudFront, DynamoDB. Same architecture as BioForge.",
+  "version": "1.0.0",
+  "tags": ["frontend", "backend", "fastapi", "fargate", "alb", "dynamodb", "cognito"],
+  "matchComponents": ["frontend", "backend", "api", "service", "database", "auth"],
+  "configFiles": ["frontend/.env.production", "infrastructure/variables.tf"],
+  "placeholders": {
+    "__COGNITO_POOL_ID__": "Cognito User Pool ID",
+    "__COGNITO_CLIENT_ID__": "Cognito App Client ID",
+    "__COGNITO_DOMAIN__": "Cognito hosted UI domain",
+    "__APP_HOSTNAME__": "Project hostname (e.g., my-app.demo.hcls.aws.dev)",
+    "__APP_NAME__": "Display name for the application",
+    "__AWS_ACCOUNT_ID__": "Target AWS account ID",
+    "__AWS_REGION__": "AWS region (us-east-1)"
+  }
+}

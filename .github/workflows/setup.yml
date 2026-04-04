@@ -1,0 +1,49 @@
+name: Infrastructure Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action'
+        required: true
+        default: 'plan'
+        type: choice
+        options: [plan, apply, destroy]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: __AWS_REGION__
+  AWS_ACCOUNT_ID: __AWS_ACCOUNT_ID__
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-Deploy
+          aws-region: __AWS_REGION__
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.7'
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform ${{ github.event.inputs.action }}
+        run: terraform ${{ github.event.inputs.action }} -auto-approve
+        if: github.event.inputs.action != 'plan'
+
+      - name: Terraform Plan
+        run: terraform plan
+        if: github.event.inputs.action == 'plan'

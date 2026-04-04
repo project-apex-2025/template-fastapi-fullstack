@@ -1,0 +1,64 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: __AWS_REGION__
+  AWS_ACCOUNT_ID: __AWS_ACCOUNT_ID__
+  APP_NAME: __APP_HOSTNAME__
+  ECR_REPO: __APP_HOSTNAME__
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-Deploy
+          aws-region: __AWS_REGION__
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend
+        working-directory: backend
+        run: |
+          docker build --platform linux/amd64 -t $ECR_REPO .
+          docker tag $ECR_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster $APP_NAME \
+            --service $APP_NAME-api \
+            --force-new-deployment
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy frontend to S3
+        run: |
+          aws s3 sync frontend/dist/ s3://$APP_NAME-frontend/ --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Aliases.Items, '${{ env.APP_NAME }}')].Id | [0]" \
+            --output text)
+          if [ "$DIST_ID" != "None" ]; then
+            aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
+          fi
