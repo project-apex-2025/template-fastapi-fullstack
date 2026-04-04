@@ -1,0 +1,39 @@
+variable "project_name" {
+  default = "__APP_HOSTNAME__"
+}
+
+variable "app_name" {
+  default = "__APP_NAME__"
+}
+
+variable "aws_region" {
+  default = "__AWS_REGION__"
+}
+
+variable "aws_account_id" {
+  default = "__AWS_ACCOUNT_ID__"
+}
+
+variable "domain_name" {
+  default = "__APP_HOSTNAME__"
+}
+
+variable "parent_zone_name" {
+  default = "demo.hcls.aws.dev"
+}
+
+variable "cognito_user_pool_id" {
+  default = "__COGNITO_POOL_ID__"
+}
+
+variable "cognito_client_id" {
+  default = "__COGNITO_CLIENT_ID__"
+}
+
+variable "cognito_domain" {
+  default = "__COGNITO_DOMAIN__"
+}
+
+locals {
+  environment = "prod"
+}
