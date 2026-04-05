@@ -16,7 +16,7 @@ concurrency:
 
 env:
   AWS_REGION: __AWS_REGION__
-  AWS_ACCOUNT_ID: __AWS_ACCOUNT_ID__
+  AWS_ACCOUNT_ID: "__AWS_ACCOUNT_ID__"
 
 permissions:
   id-token: write
