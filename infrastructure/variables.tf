@@ -19,7 +19,7 @@ variable "domain_name" {
 }
 
 variable "parent_zone_name" {
-  default = "demo.hcls.aws.dev"
+  default = "demo.apex.hcls.aws.dev"
 }
 
 variable "cognito_user_pool_id" {
