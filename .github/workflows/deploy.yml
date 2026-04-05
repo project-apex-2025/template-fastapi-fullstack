@@ -183,6 +183,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-ApexResearchAgent
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Install dependencies
         run: |
           rm -f ~/.npmrc
@@ -220,12 +226,6 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::__AWS_ACCOUNT_ID__:role/GitHubActions-ApexResearchAgent
-          aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy to S3
         run: |
