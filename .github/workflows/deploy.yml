@@ -12,10 +12,12 @@ concurrency:
 env:
   AWS_REGION: __AWS_REGION__
   AWS_ACCOUNT_ID: __AWS_ACCOUNT_ID__
-  APP_NAME: __APP_HOSTNAME__
-  ECR_REPO: __APP_HOSTNAME__
-  ECS_CLUSTER: __APP_HOSTNAME__
-  ECS_SERVICE: __APP_HOSTNAME__-api
+  PROJECT_NAME: __PROJECT_NAME__
+  APP_HOSTNAME: __APP_HOSTNAME__
+  ECR_REPO: __PROJECT_NAME__
+  ECS_CLUSTER: __PROJECT_NAME__
+  ECS_SERVICE: __PROJECT_NAME__-api
+  S3_BUCKET: __PROJECT_NAME__-frontend
 
 permissions:
   id-token: write
@@ -227,12 +229,12 @@ jobs:
 
       - name: Deploy to S3
         run: |
-          aws s3 sync frontend/dist/ s3://${{ env.APP_NAME }}-frontend --delete
+          aws s3 sync frontend/dist/ s3://${{ env.S3_BUCKET }} --delete
 
       - name: Invalidate CloudFront
         run: |
           DIST_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?contains(Aliases.Items, '${{ env.APP_NAME }}')].Id | [0]" \
+            --query "DistributionList.Items[?contains(Aliases.Items, '${{ env.APP_HOSTNAME }}')].Id | [0]" \
             --output text)
           if [ "$DIST_ID" != "None" ] && [ -n "$DIST_ID" ]; then
             aws cloudfront create-invalidation \
