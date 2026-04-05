@@ -30,6 +30,11 @@ variable "cognito_domain" {
   default = "__COGNITO_DOMAIN__"
 }
 
+variable "vpc_id" {
+  description = "APEX shared VPC"
+  default     = "vpc-0c8f1f0293c0d1d97"
+}
+
 variable "backend_image" {
   description = "Backend Docker image URI (set by CI/CD)"
   default     = ""
