@@ -1,5 +1,6 @@
 variable "project_name" {
-  default = "__APP_HOSTNAME__"
+  description = "Short project slug (used for resource naming, max 28 chars)"
+  default     = "__PROJECT_NAME__"
 }
 
 variable "app_name" {
