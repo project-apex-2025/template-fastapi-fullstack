@@ -14,7 +14,11 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
   bucket = aws_s3_bucket.frontend.id
-  rule { apply_server_side_encryption_by_default { sse_algorithm = "AES256" } }
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
@@ -102,7 +106,11 @@ resource "aws_cloudfront_distribution" "app" {
     minimum_protocol_version = "TLSv1.2_2021"
   }
 
-  restrictions { geo_restriction { restriction_type = "none" } }
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "frontend" {
