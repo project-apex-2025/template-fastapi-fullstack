@@ -1,6 +1,6 @@
 # __APP_NAME__
 
-> Provisioned by [BioForge](https://bioforge.apex.hcls.aws.dev) — APEX Accelerator Platform
+> Provisioned by [Halo](https://halo.apex.hcls.aws.dev) — Knowledge & Product Platform
 
 ## Quick Start
 
