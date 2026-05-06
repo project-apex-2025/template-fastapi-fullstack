@@ -1,5 +1,15 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-python-jose[cryptography]>=3.3.0
-httpx>=0.27.0
-boto3>=1.35.0
+# ---------------------------------------------------------------------------
+# Runtime dependencies for the FastAPI backend.
+#
+# Version floors are intentionally close to current releases so newly-
+# provisioned repos don't start life with known CVEs. pip will resolve
+# the newest compatible versions at build time.
+#
+# JWT: we use PyJWT[crypto] — python-jose is abandoned and has unpatched
+# CVEs (CVE-2024-33663, CVE-2024-33664). Do not reintroduce it.
+# ---------------------------------------------------------------------------
+fastapi>=0.120.0
+uvicorn[standard]>=0.33.0
+PyJWT[crypto]>=2.10.0
+httpx>=0.28.0
+boto3>=1.42.0

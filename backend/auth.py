@@ -1,10 +1,18 @@
-"""Cognito JWT validation for FastAPI."""
+"""Cognito JWT validation for FastAPI.
+
+Uses PyJWT (actively maintained) for signature verification. python-jose
+was abandoned and has unpatched CVEs (CVE-2024-33663 / CVE-2024-33664);
+do not reintroduce it.
+"""
 import os
 import time
 import threading
-import httpx
 from typing import Optional
-from jose import jwt, JWTError
+
+import httpx
+import jwt
+from jwt.algorithms import RSAAlgorithm
+from jwt.exceptions import InvalidTokenError
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -23,6 +31,7 @@ security = HTTPBearer(auto_error=False)
 
 
 def _fetch_jwks() -> dict:
+    """Fetch + cache the Cognito JWKS. One-hour TTL; thread-safe refresh."""
     global _jwks_cache, _jwks_fetched_at
     now = time.time()
     if _jwks_cache and (now - _jwks_fetched_at) < 3600:
@@ -40,16 +49,32 @@ def _fetch_jwks() -> dict:
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> str:
+    """Validate the Cognito-issued access/id token and return the user alias.
+
+    Returns the username portion of the `email` claim (e.g. `alice` from
+    `alice@amazon.com`), falling back to `sub` when no email is present.
+    """
     if not credentials:
         raise HTTPException(401, 'Missing authorization token')
     try:
-        headers = jwt.get_unverified_headers(credentials.credentials)
+        unverified_header = jwt.get_unverified_header(credentials.credentials)
         jwks = _fetch_jwks()
-        key = next((k for k in jwks.get('keys', []) if k['kid'] == headers.get('kid')), None)
-        if not key:
-            raise JWTError('Key not found')
-        claims = jwt.decode(credentials.credentials, key, algorithms=['RS256'],
-                          audience=COGNITO_CLIENT_ID, issuer=ISSUER, options={'verify_at_hash': False})
+        key_data = next(
+            (k for k in jwks.get('keys', []) if k.get('kid') == unverified_header.get('kid')),
+            None,
+        )
+        if not key_data:
+            raise InvalidTokenError('Signing key not found in JWKS')
+
+        public_key = RSAAlgorithm.from_jwk(key_data)
+        claims = jwt.decode(
+            credentials.credentials,
+            public_key,
+            algorithms=['RS256'],
+            audience=COGNITO_CLIENT_ID,
+            issuer=ISSUER,
+            options={'verify_at_hash': False},
+        )
         email = claims.get('email', '')
         if email and '@' in email:
             return email.split('@')[0].lower()
